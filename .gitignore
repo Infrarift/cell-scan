@@ -4,3 +4,7 @@
 input/
 
 *.pyc
+
+output/
+
+models/

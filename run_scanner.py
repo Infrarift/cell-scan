@@ -40,7 +40,7 @@ if __name__ == "__main__":
     Logger.log_field("Input Path", input_path)
     Logger.log_field("Input Path", output_path)
 
-    scanner = Scanner()
+    scanner = Scanner(output_path=output_path)
     slides: List[Slide] = loader.load_testing_slides(input_path)
     scanner.process(slides)
 
