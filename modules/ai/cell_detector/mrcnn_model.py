@@ -21,7 +21,7 @@ import torch.optim as optim
 import torch.utils.data
 from torch.autograd import Variable
 
-import modules.ai.mrcnn_utils as utils
+import modules.ai.cell_detector.mrcnn_utils as utils
 from .nms.nms_wrapper import nms
 from .roialign.roi_align.crop_and_resize import CropAndResizeFunction
 

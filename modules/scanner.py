@@ -5,14 +5,18 @@ scanner | cell-scan | 3/06/18
 <ENTER DESCRIPTION HERE>
 """
 import os
+import torch
 from typing import List
 import numpy as np
 import cv2
 
-from modules.ai.equalizer import Equalizer
-from modules.ai.prediction import Prediction
+from modules.ai.cell_detector.equalizer import Equalizer
+from modules.ai.cell_detector.prediction import Prediction
+from modules.ai.single_cell_classifier.single_cell_classifier import SingleCellClassifier
+from modules.data.cell import Cell
 from modules.data.slide import Slide
-from tools.util import visual
+from modules.reporter import Reporter
+from tools.util import visual, pather
 from tools.util.logger import Logger
 
 __author__ = "Jakrin Juangbhanich"
@@ -22,10 +26,12 @@ __email__ = "juangbhanich.k@gmail.com"
 class Scanner:
     def __init__(self, output_path: str):
         self.output_path: str = output_path
-        from modules.ai.cell_net import CellNet
+        from modules.ai.cell_detector.cell_net import CellNet
 
         self.equalizer = Equalizer()
         self.net = CellNet("cell_model")
+        self.scc = torch.load("models/scc.pt")
+        self.reporter = Reporter()
 
     def process(self, slides: List[Slide]):
         """ Predict the results, and create a report for each scan. """
@@ -34,6 +40,7 @@ class Scanner:
 
     def _process_slide(self, slide: Slide):
         slide_path = os.path.join(self.output_path, slide.name)
+        slide.slide_path = slide_path
         os.mkdir(slide_path)
 
         # Draw the slide image.
@@ -49,15 +56,22 @@ class Scanner:
 
         # Get the sample prediction.
         prediction = self.net.cycle_predict(predict_image, None)
-        self._process_prediction(image, slide_path, prediction)
+
+        slide.cells = self._process_prediction(slide, slide_path, prediction)
         self._draw_prediction_mask(image, slide_path, prediction)
+
+        pather.create("output/summary")
+        self.reporter.produce(slide, "output/summary")
+
         cv2.imwrite(image_path, equalizer_image)
 
-    def _process_prediction(self, image, path, prediction: Prediction):
+    def _process_prediction(self, slide: Slide, path, prediction: Prediction) -> List[Cell]:
         # Extract an image of each cell.
         n = 0
         pad = 50
-        pad_image = cv2.copyMakeBorder(image, pad, pad, pad, pad, cv2.BORDER_REFLECT)
+        pad_image = cv2.copyMakeBorder(slide.image, pad, pad, pad, pad, cv2.BORDER_REFLECT)
+        cells: List[Cell] = []
+
         for unit in prediction.units:
             r = unit.region.clone()
             max_size = max(r.width, r.height)
@@ -67,8 +81,21 @@ class Scanner:
             r.y += pad
             n += 1
             ex_image = pad_image[r.top:r.bottom, r.left:r.right]
-            full_path = os.path.join(path, "cell_{}.png".format(n))
+            full_path = os.path.join(path, "{}_cell_{}.png".format(slide.name, n))
+            ex_image = cv2.resize(ex_image, (64, 64))
             cv2.imwrite(full_path, ex_image)
+
+            cell = Cell()
+            cell.image_path = full_path
+            cell.image = ex_image
+            cell.mask = unit.mask
+            cell.region = unit.region
+
+            # Predict Cell Health
+            cell.type = self.scc.process(cell.image)
+            cells.append(cell)
+
+        return cells
 
     def _draw_prediction_mask(self, image, path: str, prediction: Prediction):
         # For each prediction I also want to draw a mask.

@@ -2,7 +2,7 @@
 
 import torch
 from .config import Config
-import modules.ai.mrcnn_model as modellib
+import modules.ai.cell_detector.mrcnn_model as modellib
 
 
 class InferenceConfig(Config):
