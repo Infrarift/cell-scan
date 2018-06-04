@@ -12,6 +12,7 @@ import cv2
 from modules.ai.equalizer import Equalizer
 from modules.ai.prediction import Prediction
 from modules.data.slide import Slide
+from tools.util import visual
 from tools.util.logger import Logger
 
 __author__ = "Jakrin Juangbhanich"
@@ -53,13 +54,19 @@ class Scanner:
         cv2.imwrite(image_path, equalizer_image)
 
     def _process_prediction(self, image, path, prediction: Prediction):
-
         # Extract an image of each cell.
         n = 0
+        pad = 50
+        pad_image = cv2.copyMakeBorder(image, pad, pad, pad, pad, cv2.BORDER_REFLECT)
         for unit in prediction.units:
-            r = unit.region
+            r = unit.region.clone()
+            max_size = max(r.width, r.height)
+            r.width = max_size
+            r.height = max_size
+            r.x += pad
+            r.y += pad
             n += 1
-            ex_image = image[r.top:r.bottom, r.left:r.right]
+            ex_image = pad_image[r.top:r.bottom, r.left:r.right]
             full_path = os.path.join(path, "cell_{}.png".format(n))
             cv2.imwrite(full_path, ex_image)
 
@@ -67,10 +74,16 @@ class Scanner:
         # For each prediction I also want to draw a mask.
         mask = np.zeros_like(image, dtype=np.uint8)
 
-        for unit in prediction.units:
+        n_units = len(prediction.units)
+        colors = visual.random_colors(n_units)
+        pad = 8
+
+        for i in range(n_units):
+            unit = prediction.units[i]
             r = unit.region
-            cv2.rectangle(mask, (r.left, r.top), (r.right, r.bottom), color=(0, 255, 0), thickness=2)
-            mask[unit.mask] = (0, 50, 0)
+            cv2.rectangle(image, (r.left - pad, r.top - pad), (r.right + pad, r.bottom + pad),
+                          color=colors[i], thickness=2)
+            mask[unit.mask] = colors[i] // 3
 
             # Find and draw the contour as well
             c_mask = np.zeros((image.shape[0], image.shape[1], 1), dtype=np.uint8)
@@ -86,10 +99,11 @@ class Scanner:
                     tam = len(contorno)
 
             if contornoGrande is not None:
-                cv2.drawContours(mask, contornoGrande.astype('int'), -1, (0, 255, 0), 2)
+                cv2.drawContours(mask, contornoGrande.astype('int'), -1, colors[i], 3)
 
         mask_path = os.path.join(path, "mask.png")
-        cv2.imwrite(mask_path, mask)
-        pass
+        final = cv2.addWeighted(image, 1.0, mask, 0.5, 0.0)
+        cv2.imwrite(mask_path, final)
+
 
 
